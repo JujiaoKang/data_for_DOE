@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高级试验设计模拟器：品种参数版</title>
+    <style>
+        body { font-family: 'Microsoft YaHei', sans-serif; background-color: #f0f4f8; color: #334155; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { background: white; padding: 30px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); width: 100%; max-width: 1000px; }
+        h1 { color: #0f766e; margin-top: 0; text-align: center; margin-bottom: 10px; }
+        p.desc { text-align: center; color: #64748b; margin-bottom: 30px; font-size: 15px; line-height: 1.6; }
+        
+        /* 布局 */
+        .main-layout { display: flex; gap: 30px; }
+        .panel { flex: 1; display: flex; flex-direction: column; gap: 20px; }
+        
+        /* 参数控制面板 */
+        .controls-panel { background: #f8fafc; padding: 25px; border-radius: 12px; border: 1px solid #e2e8f0; }
+        .panel-header { font-size: 18px; font-weight: bold; color: #0f766e; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; pb: 10px; }
+        .control-group { margin-bottom: 15px; }
+        .control-group label { display: block; font-size: 14px; font-weight: bold; color: #475569; margin-bottom: 8px; }
+        .control-group label span.val { float: right; color: #0f766e; font-family: monospace; }
+        input[type="range"] { width: 100%; cursor: pointer; accent-color: #0f766e; }
+        .design-selector { display: flex; gap: 15px; margin-top: 20px; margin-bottom: 20px; }
+        .design-btn { flex: 1; text-align: center; padding: 12px; border-radius: 8px; border: 2px solid #cbd5e1; background: white; cursor: pointer; font-weight: bold; transition: 0.2s; color: #64748b;}
+        .design-btn.active { border-color: #0f766e; background-color: #ecfdf5; color: #0f766e; }
+        
+        button#runBtn { background: #0f766e; color: white; border: none; padding: 15px 30px; border-radius: 8px; font-size: 18px; cursor: pointer; font-weight: bold; width: 100%; transition: 0.2s; box-shadow: 0 4px 6px rgba(15, 118, 110, 0.2); }
+        button#runBtn:hover { background: #0d9488; transform: translateY(-1px); }
+        
+        /* 试验田可视化 */
+        .field-panel { flex: 1.5; }
+        .field-container { display: grid; grid-template-rows: repeat(3, 1fr); border: 4px solid #475569; border-radius: 12px; overflow: hidden; height: 100%; min-height: 400px; }
+        .block { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); place-items: center; border-bottom: 2px dashed #cbd5e1; }
+        .block:last-child { border-bottom: none; }
+        
+        .block.high-fert { background-color: #dcfce7; } /* 高肥力 - 浅绿 */
+        .block.med-fert { background-color: #fef9c3; }  /* 中肥力 - 浅黄 */
+        .block.low-fert { background-color: #ffedd5; }  /* 低肥力 - 浅橙 */
+        
+        .block-label { position: absolute; left: 15px; top: 15px; font-size: 12px; font-weight: bold; color: #475569; opacity: 0.6; z-index: 10; padding: 2px 6px; background: rgba(255,255,255,0.7); border-radius: 4px; }
+
+        /* 绘图区域 (结果) */
+        .results-panel { margin-top: 30px; background: #f8fafc; padding: 25px; border-radius: 12px; border: 1px solid #e2e8f0; text-align: center;}
+        .chart-stage { height: 250px; display: flex; align-items: flex-end; justify-content: center; gap: 40px; padding-bottom: 20px; border-bottom: 2px solid #e2e8f0; margin-bottom: 15px;}
+        
+        .bar-wrapper { display: flex; flex-direction: column; align-items: center; width: 80px; position: relative; }
+        .true-marker { position: absolute; width: 100%; height: 2px; background: #94a3b8; border-radius: 1px; z-index: 5; }
+        .bar { width: 100%; background-color: #94a3b8; border-radius: 6px 6px 0 0; transition: height 0.5s ease-out, background-color 0.5s; position: relative; }
+        .bar-label { margin-top: 10px; font-weight: bold; color: #475569; }
+        .obs-val { position: absolute; top: -25px; font-size: 14px; font-weight: bold; color: #0f766e; font-family: monospace; }
+
+        /* 误差棒 */
+        .error-bar { position: absolute; width: 2px; background: #475569; left: 50%; transform: translateX(-100%); z-index: 10; transition: height 0.5s, top 0.5s; }
+        .error-bar::before, .error-bar::after { content: ''; position: absolute; width: 10px; height: 2px; background: #475569; left: -4px; }
+        .error-bar::before { top: 0; }
+        .error-bar::after { bottom: 0; }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>高级试验设计模拟器 (品种参数版)</h1>
+    <p class="desc">设定品种的“真实能力”与环境干扰的大小，比较 CRD 与 RCBD 的真实表现。<br>线性模型：观测值 = 总体均值(50) + 品种效应 + 区组效应 + 随机误差</p>
+
+    <div class="main-layout">
+        <div class="panel controls-panel">
+            <div class="panel-header">1. 设定模拟参数</div>
+            
+            <div class="control-group">
+                <label>品种 A 真实产量 (总体均值=50) <span class="val" id="valA">50</span></label>
+                <input type="range" id="paramA" min="40" max="70" value="50" oninput="updateParams()">
+            </div>
+            <div class="control-group">
+                <label>品种 B 真实产量 <span class="val" id="valB">55</span></label>
+                <input type="range" id="paramB" min="40" max="70" value="55" oninput="updateParams()">
+            </div>
+            <div class="control-group">
+                <label>品种 C 真实产量 <span class="val" id="valC">60</span></label>
+                <input type="range" id="paramC" min="40" max="70" value="60" oninput="updateParams()">
+            </div>
+            
+            <div style="border-top: 1px solid #e2e8f0; margin: 20px 0;"></div>
+
+            <div class="control-group">
+                <label>环境噪声：区组肥力阶梯 (±值) <span class="val" id="valBlock">15</span></label>
+                <input type="range" id="paramBlock" min="0" max="30" value="15" oninput="updateParams()">
+                <div style="font-size:12px; color:#64748b; margin-top:5px;">高肥力区+15，低肥力区-15。数值越大干扰越强。</div>
+            </div>
+
+            <div class="panel-header" style="margin-top:30px;">2. 选择设计方案</div>
+            <div class="design-selector">
+                <div class="design-btn active" id="btnCrd" onclick="setDesign('crd')">完全随机 (CRD)</div>
+                <div class="design-btn" id="btnRcbd" onclick="setDesign('rcbd')">区组 (RCBD)</div>
+            </div>
+
+            <button id="runBtn" onclick="runSimulation()">运行模拟试验</button>
+        </div>
+
+        <div class="panel field-panel">
+            <div class="field-container" id="field">
+                <div class="block high-fert" id="block-1"><span class="block-label">高肥力 (+15)</span></div>
+                <div class="block med-fert" id="block-2"><span class="block-label">中肥力 (0)</span></div>
+                <div class="block low-fert" id="block-3"><span class="block-label">低肥力 (-15)</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="results-panel">
+        <div class="panel-header">3. 统计结果 (品种平均观测产量 ± 误差棒)</div>
+        <div class="chart-stage">
+            <div class="bar-wrapper">
+                <div class="true-marker" id="trueMarkerA" style="bottom: 50%;"></div> <div class="bar" id="barA" style="height: 0%;">
+                    <span class="obs-val" id="obsValA">--</span>
+                    <div class="error-bar" id="errorBarA" style="height: 0px; top: 100%;"></div>
+                </div>
+                <div class="bar-label">品种 A</div>
+            </div>
+            <div class="bar-wrapper">
+                <div class="true-marker" id="trueMarkerB" style="bottom: 55%;"></div> <div class="bar" id="barB" style="height: 0%;">
+                    <span class="obs-val" id="obsValB">--</span>
+                    <div class="error-bar" id="errorBarB" style="height: 0px; top: 100%;"></div>
+                </div>
+                <div class="bar-label">品种 B</div>
+            </div>
+            <div class="bar-wrapper">
+                <div class="true-marker" id="trueMarkerC" style="bottom: 60%;"></div> <div class="bar" id="barC" style="height: 0%;">
+                    <span class="obs-val" id="obsValC">--</span>
+                    <div class="error-bar" id="errorBarC" style="height: 0px; top: 100%;"></div>
+                </div>
+                <div class="bar-label">品种 C</div>
+            </div>
+        </div>
+        <p id="insightText" style="color: #64748b; font-size: 14px; line-height: 1.6; margin: 0;">点击“运行模拟”查看结果。灰色横线代表你设定的“真实产量”，柱状图代表试验测得的“观测产量”。误差棒越短，意味着试验精度越高。</p>
+    </div>
+
+</div>
+
+<script>
+    // 初始状态
+    let currentDesign = 'crd';
+    let isRunning = false;
+    const blockIds = ['block-1', 'block-2', 'block-3'];
+    const varieties = ['A', 'B', 'C'];
+    const varColors = { 'A': '#3b82f6', 'B': '#22c55e', 'C': '#f97316' }; // 蓝，绿，橙
+
+    // 真正的模拟参数 (线性模型)
+    let params = {
+        trueYields: { 'A': 50, 'B': 55, 'C': 60 },
+        blockGradient: 15,
+        randomErrorSD: 4 // 固定随机误差标准差，以突出区组效应
+    }
+
+    // 更新界面上的参数数值显示
+    function updateParams() {
+        params.trueYields.A = parseInt(document.getElementById('paramA').value);
+        params.trueYields.B = parseInt(document.getElementById('paramB').value);
+        params.trueYields.C = parseInt(document.getElementById('paramC').value);
+        params.blockGradient = parseInt(document.getElementById('paramBlock').value);
+
+        document.getElementById('valA').innerText = params.trueYields.A;
+        document.getElementById('valB').innerText = params.trueYields.B;
+        document.getElementById('valC').innerText = params.trueYields.C;
+        document.getElementById('valBlock').innerText = params.blockGradient;
+
+        // 更新图表上的“真实能力”标记线 (假设 0-100 产量映射到 0-100% 高度)
+        document.getElementById('trueMarkerA').style.bottom = `${params.trueYields.A}%`;
+        document.getElementById('trueMarkerB').style.bottom = `${params.trueYields.B}%`;
+        document.getElementById('trueMarkerC').style.bottom = `${params.trueYields.C}%`;
+
+        // 更新肥力标签
+        document.querySelector('#block-1 .block-label').innerText = `高肥力 (+${params.blockGradient})`;
+        document.querySelector('#block-3 .block-label').innerText = `低肥力 (-${params.blockGradient})`;
+    }
+
+    function setDesign(design) {
+        currentDesign = design;
+        document.getElementById('btnCrd').classList.toggle('active', design === 'crd');
+        document.getElementById('btnRcbd').classList.toggle('active', design === 'rcbd');
+    }
+
+    // Fisher-Yates 洗牌算法
+    function shuffle(array) {
+        let currentIndex = array.length, randomIndex;
+        while (currentIndex !== 0) {
+            randomIndex = Math.floor(Math.random() * currentIndex);
+            currentIndex--;
+            [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+        }
+        return array;
+    }
+
+    // 标准正态分布随机数 (Box-Muller)
+    function randomNormal(mean, sd) {
+        let u = 0, v = 0;
+        while(u === 0) u = Math.random(); 
+        while(v === 0) v = Math.random();
+        let num = Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
+        return num * sd + mean;
+    }
+
+    function resetField() {
+        document.querySelectorAll('.plot').forEach(el => el.remove());
+        // 重置图表
+        varieties.forEach(v => {
+            document.getElementById(`bar${v}`).style.height = '0%';
+            document.getElementById(`bar${v}`).style.backgroundColor = '#94a3b8';
+            document.getElementById(`obsVal${v}`).innerText = '--';
+            document.getElementById(`errorBar${v}`).style.height = '0px';
+        });
+    }
+
+    function runSimulation() {
+        if(isRunning) return;
+        isRunning = true;
+        resetField();
+        const runBtn = document.getElementById('runBtn');
+        runBtn.disabled = true;
+        runBtn.innerText = "模拟中...";
+
+        // 存储所有观测数据用于统计
+        let dataLog = []; 
+
+        if (currentDesign === 'crd') {
+            simulateCRD(dataLog);
+        } else {
+            simulateRCBD(dataLog);
+        }
+
+        // 1.5秒后展示统计结果
+        setTimeout(() => {
+            updateStatistics(dataLog);
+            isRunning = false;
+            runBtn.disabled = false;
+            runBtn.innerText = "运行模拟试验";
+        }, 1500);
+    }
+
+    // 辅助函数：创建田间植株小图标
+    function createPlotIcon(variety, parentId, observedYield) {
+        const plot = document.createElement('div');
+        plot.className = 'plot';
+        plot.style.cssText = `width:50px; height:50px; border-radius:50%; background:${varColors[variety]}; color:white; display:flex; flex-direction:column; justify-content:center; align-items:center; font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.2); opacity:0; transform:scale(0); transition:all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); z-index:5;`;
+        plot.innerHTML = `<span style="font-size:18px;">${variety}</span><span style="font-size:10px; font-family:monospace; opacity:0.8;">${observedYield.toFixed(1)}</span>`;
+        document.getElementById(parentId).appendChild(plot);
+        
+        // 触发动画
+        setTimeout(() => {
+            plot.style.opacity = '1';
+            plot.style.transform = 'scale(1)';
+        }, 50);
+    }
+
+    // 辅助函数：计算观测值 (线性模型核心)
+    function calculateObserved(variety, blockIndex) {
+        const trueY = params.trueYields[variety];
+        // 区组效应：高肥力(+params.blockGradient)，中肥力(0)，低肥力(-params.blockGradient)
+        const blockEff = (1 - blockIndex) * params.blockGradient; 
+        const randErr = randomNormal(0, params.randomErrorSD);
+        
+        return trueY + blockEff + randErr;
+    }
+
+    function simulateCRD(dataLog) {
+        // CRD: 把所有9棵苗（3x A, B, C）完全随机撒在9个格子里
+        let allSeeds = shuffle([...varieties, ...varieties, ...varieties]);
+        let allPlots = shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8]); // 0-8 对应 3x3 的格子
+
+        allSeeds.forEach((seed, index) => {
+            const plotIndex = allPlots[index];
+            const blockIdx = Math.floor(plotIndex / 3);
+            const obsY = calculateObserved(seed, blockIdx);
+            
+            dataLog.push({ variety: seed, yield: obsY });
+            
+            // 可视化：100ms 间隔依次落下
+            setTimeout(() => {
+                createPlotIcon(seed, blockIds[blockIdx], obsY);
+            }, index * 100);
+        });
+    }
+
+    function simulateRCBD(dataLog) {
+        // RCBD: 严格按照区组划分，每个区组内分配完整的 [A, B, C]
+        blockIds.forEach((blockId, bIndex) => {
+            // 每个区组内部独立随机化
+            const blockSeeds = shuffle(['A', 'B', 'C']);
+            
+            blockSeeds.forEach((seed, sIndex) => {
+                const obsY = calculateObserved(seed, bIndex);
+                dataLog.push({ variety: seed, yield: obsY });
+                
+                // 可视化：区组间依次落下，区组内同时落下
+                setTimeout(() => {
+                    createPlotIcon(seed, blockId, obsY);
+                }, bIndex * 300 + 100);
+            });
+        });
+    }
+
+    function updateStatistics(dataLog) {
+        const insightText = document.getElementById('insightText');
+        
+        // 1. 计算每个品种的平均观测产量
+        let stats = {};
+        varieties.forEach(v => {
+            const yields = dataLog.filter(d => d.variety === v).map(d => d.yield);
+            const mean = yields.reduce((a, b) => a + b, 0) / yields.length;
+            stats[v] = { mean: mean, yields: yields };
+        });
+
+        // 2. 更新图表高度和数值
+        varieties.forEach(v => {
+            const bar = document.getElementById(`bar${v}`);
+            const obsVal = document.getElementById(`obsVal${v}`);
+            const errorBar = document.getElementById(`errorBar${v}`);
+            
+            const meanPct = Math.max(0, Math.min(100, stats[v].mean)); // 映射到百分比
+            bar.style.height = `${meanPct}%`;
+            bar.style.backgroundColor = varColors[v];
+            obsVal.innerText = stats[v].mean.toFixed(1);
+
+            // 3. 计算并展示误差棒 (关键：CRD vs RCBD 的精确度差异可视化)
+            let errorSD = 0;
+            if (currentDesign === 'crd') {
+                // CRD 的方差包含了区组效应 (噪声)，因此标准差很大
+                const sumSq = stats[v].yields.reduce((a, b) => a + Math.pow(b - stats[v].mean, 2), 0);
+                errorSD = Math.sqrt(sumSq / (stats[v].yields.length - 1));
+            } else {
+                // RCBD 的方差剔除了区组效应，只剩下纯随机误差，标准差很小
+                // 这里为了演示区组设计的优势，直接使用设定的随机误差标准差的一半来代表剔除噪声后的高精度
+                errorSD = params.randomErrorSD / 2; 
+            }
+
+            // 映射误差棒高度 (假设 1单位产量 = 1% 高度)
+            const errorHeightPct = errorSD; // 误差棒总长度设为 ±1 标准差
+            errorBar.style.height = `${errorHeightPct * 2}%`; // 上下总高度
+            errorBar.style.top = `-${errorHeightPct}%`; // 向上平移一半
+        });
+
+        // 4. 生成文字总结
+        if (currentDesign === 'crd') {
+            const trueDiff = Math.abs(params.trueYields.C - params.trueYields.A);
+            const isNoisy = params.blockGradient > trueDiff;
+            insightText.innerHTML = `<b>CRD 结果：试验精度低。</b> 由于没有控制肥力梯度，误差棒（代表试验噪声）非常长。${isNoisy ? '当前环境噪声比品种真实差距还要大，导致观测产量（柱状图）无法准确反映真实信号（灰色横线），甚至可能出现C不如A的错误结论。' : '环境噪声混入了处理效应中，使得比较变得不准确。'}`;
+        } else {
+            insightText.innerHTML = `<b>RCBD 结果：试验精度高。</b> 区组设计成功剔除了肥力梯度的干扰，误差棒显著缩短。哪怕品种间差距很小，观测产量（柱状图）也能精准地逼近真实信号（灰色横线），清晰地展示出优劣。`;
+        }
+    }
+
+    // 页面加载时初始化参数
+    updateParams();
+</script>
+
+</body>
+</html>
