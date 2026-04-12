@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>实验设计方差分解模拟器：CRD vs RCBD</title>
+    <style>
+        :root {
+            --bg-color: #121214;
+            --card-bg: #1e1e20;
+            --text-main: #ffffff;
+            --text-dim: #a0a0a0;
+            --color-sstr: #6495ed;
+            --color-ssb: #edb464;
+            --color-sse: #4a4a4a;
+            --accent: #bb86fc;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .dashboard {
+            width: 900px;
+            background: var(--card-bg);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+
+        /* 顶部看板 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 30px;
+        }
+
+        .title-area h2 { margin: 0; font-size: 24px; }
+        .status-msg { 
+            margin-top: 10px; 
+            font-size: 14px; 
+            color: var(--text-dim);
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .metrics { display: flex; gap: 30px; }
+        .metric-box { text-align: center; }
+        .metric-label { font-size: 12px; color: var(--text-dim); margin-bottom: 5px; text-transform: uppercase; }
+        .metric-value { font-family: 'Courier New', monospace; font-size: 20px; font-weight: bold; }
+
+        /* 图例 */
+        .legend { display: flex; gap: 20px; margin-bottom: 40px; font-size: 13px; }
+        .legend-item { display: flex; align-items: center; gap: 8px; }
+        .dot { width: 12px; height: 12px; border-radius: 2px; }
+
+        /* 主图表区 */
+        .chart-area { position: relative; padding-left: 180px; margin-bottom: 50px; border-left: 2px solid #333; }
+        .row { margin-bottom: 40px; position: relative; }
+        .row-label { 
+            position: absolute; left: -180px; top: 50%; transform: translateY(-50%);
+            width: 160px; font-size: 14px; color: var(--text-dim); text-align: right;
+        }
+        .bar-container { height: 80px; display: flex; width: 100%; background: #2a2a2a; border-radius: 4px; overflow: hidden; }
+        .seg { 
+            display: flex; align-items: center; justify-content: center; 
+            font-size: 12px; font-weight: 500; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            white-space: nowrap; overflow: hidden;
+        }
+
+        /* 底部控制区 */
+        .controls { 
+            display: flex; justify-content: space-between; align-items: center;
+            background: rgba(255,255,255,0.05); padding: 20px; border-radius: 12px;
+        }
+        .control-group { display: flex; align-items: center; gap: 15px; flex: 1; }
+        .control-group label { font-size: 14px; color: var(--text-dim); width: 180px; }
+        input[type=range] { flex: 0.6; cursor: pointer; }
+        .val-badge { 
+            background: #333; padding: 5px 15px; border-radius: 8px; min-width: 30px; text-align: center;
+            border: 1px solid #444; font-family: monospace;
+        }
+        .reset-btn {
+            background: #333; color: white; border: none; padding: 10px 25px; border-radius: 8px;
+            cursor: pointer; transition: 0.2s; margin-left: 20px;
+        }
+        .reset-btn:hover { background: #444; }
+
+        /* 显著性颜色映射 */
+        .sig-true { color: #4caf50; }
+        .sig-false { color: #f44336; }
+    </style>
+</head>
+<body>
+
+<div class="dashboard">
+    <div class="header">
+        <div class="title-area">
+            <h2>实验设计方差分解模拟器: CRD vs RCBD</h2>
+            <div class="status-msg">
+                ℹ️ <span id="hint-text">均不显著：处理效应太弱，或者整体随机误差过大。</span>
+            </div>
+        </div>
+        <div class="metrics">
+            <div class="metric-box"><div class="metric-label">CRD P-值</div><div id="crd-p" class="metric-value">0.000</div></div>
+            <div class="metric-box"><div class="metric-label">RCBD P-值</div><div id="rcbd-p" class="metric-value">0.000</div></div>
+            <div class="metric-box"><div class="metric-label">CRD F-统计量</div><div id="crd-f" class="metric-value">0.00</div></div>
+            <div class="metric-box"><div class="metric-label">RCBD F-统计量</div><div id="rcbd-f" class="metric-value">0.00</div></div>
+        </div>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item"><div class="dot" style="background:var(--color-sstr)"></div> 处理 (SSTr)</div>
+        <div class="legend-item"><div class="dot" style="background:var(--color-ssb)"></div> 区组 (SSB)</div>
+        <div class="legend-item"><div class="dot" style="background:var(--color-sse)"></div> 误差 (SSE)</div>
+    </div>
+
+    <div class="chart-area">
+        <div class="row">
+            <div class="row-label">完全随机设计 (CRD)</div>
+            <div class="bar-container">
+                <div id="crd-sstr-bar" class="seg" style="background:var(--color-sstr)"></div>
+                <div id="crd-sse-bar" class="seg" style="background:var(--color-sse)"></div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="row-label">随机完全区组 (RCBD)</div>
+            <div class="bar-container">
+                <div id="rcbd-sstr-bar" class="seg" style="background:var(--color-sstr)"></div>
+                <div id="rcbd-ssb-bar" class="seg" style="background:var(--color-ssb)"></div>
+                <div id="rcbd-sse-bar" class="seg" style="background:var(--color-sse)"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <div class="control-group">
+            <label>处理效应 (Treatment Effect)</label>
+            <input type="range" id="sstr-input" min="5" max="150" value="30">
+            <div class="val-badge" id="sstr-num">30</div>
+        </div>
+        <div class="control-group">
+            <label>区组变异 (Block Variation)</label>
+            <input type="range" id="ssb-input" min="0" max="150" value="10">
+            <div class="val-badge" id="ssb-num">10</div>
+        </div>
+        <button class="reset-btn" onclick="reset()">重置模拟</button>
+    </div>
+</div>
+
+<script>
+    // 模拟参数设定
+    const BASE_SSE = 48; // 固定底层噪音 [cite: 5]
+    const DF_TR = 3;     // 处理自由度
+    const DF_E_CRD = 16; // CRD 误差自由度
+    const DF_E_RCBD = 12;// RCBD 误差自由度
+
+    // 简易 F 分布累积分布函数近似计算 P 值
+    function getPValue(f, df1, df2) {
+        if (f <= 0) return 1.0;
+        const x = df2 / (df2 + df1 * f);
+        // 极简近似：利用不完全Beta函数的简易逻辑
+        let p = Math.pow(x, df2/2) * Math.pow(1-x, df1/2) * 2; 
+        return Math.min(Math.max(p, 0), 1).toFixed(3);
+    }
+
+    function update() {
+        const sstr = parseInt(document.getElementById('sstr-input').value);
+        const ssb = parseInt(document.getElementById('ssb-input').value);
+        
+        document.getElementById('sstr-num').innerText = sstr;
+        document.getElementById('ssb-num').innerText = ssb;
+
+        // 计算统计量 [cite: 5]
+        const ms_tr = sstr / DF_TR;
+        
+        // CRD: 噪音包含区组变异 [cite: 4]
+        const sse_crd = ssb + BASE_SSE;
+        const f_crd = ms_tr / (sse_crd / DF_E_CRD);
+        const p_crd = getPValue(f_crd, DF_TR, DF_E_CRD);
+
+        // RCBD: 成功剥离区组变异 [cite: 5]
+        const f_rcbd = ms_tr / (BASE_SSE / DF_E_RCBD);
+        const p_rcbd = getPValue(f_rcbd, DF_TR, DF_E_RCBD);
+
+        // 更新界面数据 
+        document.getElementById('crd-f').innerText = f_crd.toFixed(2);
+        document.getElementById('rcbd-f').innerText = f_rcbd.toFixed(2);
+        document.getElementById('crd-p').innerText = p_crd;
+        document.getElementById('rcbd-p').innerText = p_rcbd;
+        
+        document.getElementById('crd-p').className = 'metric-value ' + (p_crd < 0.05 ? 'sig-true' : 'sig-false');
+        document.getElementById('rcbd-p').className = 'metric-value ' + (p_rcbd < 0.05 ? 'sig-true' : 'sig-false');
+
+        // 更新图表长度 
+        const total = 250; // 最大比例尺
+        document.getElementById('crd-sstr-bar').style.width = (sstr/total*100) + '%';
+        document.getElementById('crd-sstr-bar').innerText = `处理: ${sstr}`;
+        document.getElementById('crd-sse-bar').style.width = (sse_crd/total*100) + '%';
+        document.getElementById('crd-sse-bar').innerText = `误差: ${sse_crd}`;
+
+        document.getElementById('rcbd-sstr-bar').style.width = (sstr/total*100) + '%';
+        document.getElementById('rcbd-sstr-bar').innerText = `处理: ${sstr}`;
+        document.getElementById('rcbd-ssb-bar').style.width = (ssb/total*100) + '%';
+        document.getElementById('rcbd-ssb-bar').innerText = `区组: ${ssb}`;
+        document.getElementById('rcbd-sse-bar').style.width = (BASE_SSE/total*100) + '%';
+        document.getElementById('rcbd-sse-bar').innerText = `误差: ${BASE_SSE}`;
+
+        // 更新提示语
+        const hint = document.getElementById('hint-text');
+        if (p_rcbd < 0.05 && p_crd >= 0.05) {
+            hint.innerText = "✨ RCBD 优势显现：成功剥离区组变异，使原本不显著的结果变得显著！";
+        } else if (p_rcbd < 0.05 && p_crd < 0.05) {
+            hint.innerText = "结论：两者皆显著。但在 RCBD 中 F 统计量更高，检验效能更强。";
+        } else {
+            hint.innerText = "均不显著：处理效应太弱，或者整体随机误差过大。";
+        }
+    }
+
+    function reset() {
+        document.getElementById('sstr-input').value = 30;
+        document.getElementById('ssb-input').value = 10;
+        update();
+    }
+
+    document.getElementById('sstr-input').addEventListener('input', update);
+    document.getElementById('ssb-input').addEventListener('input', update);
+    update();
+</script>
+</body>
+</html>
