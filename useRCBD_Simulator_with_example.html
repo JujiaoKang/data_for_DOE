@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>试验设计模拟：系统混杂 vs CRD vs RCBD</title>
+    <style>
+        body { font-family: 'Microsoft YaHei', sans-serif; background-color: #f0f4f8; color: #334155; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { background: white; padding: 30px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); width: 100%; max-width: 1250px; }
+        h1 { color: #0f766e; margin-top: 0; text-align: center; margin-bottom: 5px; }
+        p.desc { text-align: center; color: #64748b; margin-bottom: 20px; font-size: 15px; line-height: 1.6; }
+        
+        /* 布局 */
+        .main-layout { display: flex; gap: 30px; }
+        .panel { flex: 1; display: flex; flex-direction: column; gap: 15px; }
+        
+        /* 参数控制面板 */
+        .controls-panel { background: #f8fafc; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; }
+        .panel-header { font-size: 16px; font-weight: bold; color: #0f766e; margin-bottom: 12px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .control-group { margin-bottom: 12px; }
+        .control-group label { display: block; font-size: 13px; font-weight: bold; color: #475569; margin-bottom: 5px; }
+        .control-group label span.val { float: right; color: #0f766e; font-family: monospace; font-size: 15px;}
+        input[type="range"] { width: 100%; cursor: pointer; accent-color: #0f766e; }
+        select { padding: 6px 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-weight: bold; color: #0f766e; outline: none; cursor: pointer; background: white; font-size: 13px;}
+        
+        /* 预设按钮样式 */
+        .preset-container { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px; }
+        .preset-btn { flex: 1; min-width: 120px; background: #fffbeb; color: #d97706; border: 1px solid #fcd34d; padding: 8px 10px; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.05);}
+        .preset-btn:hover { background: #fef3c7; transform: translateY(-1px); border-color: #f59e0b;}
+
+        /* 设计方案选择器 (三按钮) */
+        .design-selector { display: flex; gap: 8px; margin-top: 5px; margin-bottom: 15px; }
+        .design-btn { flex: 1; text-align: center; padding: 10px 5px; border-radius: 8px; border: 2px solid #cbd5e1; background: white; cursor: pointer; font-weight: bold; transition: 0.2s; color: #64748b; font-size: 13px; display: flex; flex-direction: column; justify-content: center;}
+        .design-btn.active { border-color: #0f766e; background-color: #ecfdf5; color: #0f766e; box-shadow: 0 4px 6px rgba(15,118,110,0.15);}
+        .design-btn.active-error { border-color: #ef4444; background-color: #fef2f2; color: #ef4444; box-shadow: 0 4px 6px rgba(239,68,68,0.15);}
+        
+        button#runBtn { background: #0f766e; color: white; border: none; padding: 15px; border-radius: 8px; font-size: 18px; cursor: pointer; font-weight: bold; width: 100%; transition: 0.2s; box-shadow: 0 4px 6px rgba(15, 118, 110, 0.2);}
+        button#runBtn:hover { background: #0d9488; transform: translateY(-1px); }
+        button#runBtn:disabled { background: #94a3b8; cursor: not-allowed; transform: none; box-shadow: none;}
+        
+        /* 试验田可视化 */
+        .field-panel { flex: 1.2; }
+        .field-container { display: grid; border: 4px solid #475569; border-radius: 12px; overflow: hidden; height: 100%; min-height: 400px; transition: grid-template-rows 0.3s; }
+        .block { position: relative; display: grid; place-items: center; border-bottom: 2px dashed #94a3b8; transition: background-color 0.3s; }
+        .block:last-child { border-bottom: none; }
+        .block-label { position: absolute; left: 10px; top: 10px; font-size: 11px; font-weight: bold; color: #1e293b; opacity: 0.8; z-index: 10; padding: 2px 6px; background: rgba(255,255,255,0.7); border-radius: 4px; pointer-events: none;}
+        .plot { display:flex; flex-direction:column; justify-content:center; align-items:center; font-weight:bold; color:white; border-radius:50%; box-shadow:0 2px 4px rgba(0,0,0,0.2); opacity:0; transform:scale(0); transition:all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); z-index:5; width: 40px; height: 40px; }
+
+        /* ======== 深色方差图表区 ======== */
+        .dark-chart-panel { margin-top: 25px; background: #121418; padding: 25px 35px; border-radius: 12px; color: white; position: relative; overflow: hidden; display: flex; gap: 30px;}
+        .chart-section { flex: 1.5; display: flex; flex-direction: column; }
+        .chart-header { margin-bottom: 20px; }
+        .chart-title { font-size: 20px; font-weight: normal; margin: 0 0 8px 0; color: #ffffff; }
+        .chart-subtitle { font-size: 12px; color: #a0aab5; margin: 0; line-height: 1.5;}
+        
+        .chart-stage { height: 320px; display: flex; align-items: flex-end; justify-content: space-evenly; padding-bottom: 30px; position: relative; margin-top: 10px; border-bottom: 1px solid rgba(255,255,255,0.2);}
+        
+        .grid-line { position: absolute; left: 0; right: 0; height: 1px; background: rgba(255, 255, 255, 0.1); z-index: 1; }
+        .y-label { position: absolute; left: 0; transform: translateY(-50%); font-size: 12px; color: #a0aab5; }
+
+        .bar-wrapper { display: flex; flex-direction: column; align-items: center; width: 60px; position: relative; z-index: 5; height: 100%; justify-content: flex-end;}
+        .true-line { position: absolute; width: 140%; height: 2px; background: rgba(255,255,255,0.9); z-index: 15; border-bottom: 2px dashed #000; box-shadow: 0 1px 3px rgba(0,0,0,0.5);}
+        .bar { width: 100%; transition: height 0.6s ease-out; position: relative; box-shadow: 0 4px 10px rgba(0,0,0,0.3); border-radius: 4px 4px 0 0;}
+        
+        .obs-val { position: absolute; top: -28px; left: 50%; transform: translateX(-50%); font-size: 14px; font-weight: bold; color: white; white-space: nowrap; font-family: 'Arial', sans-serif;}
+        .bar-label { position: absolute; bottom: -25px; font-weight: bold; color: white; font-size: 14px; }
+
+        /* 白色误差棒 */
+        .error-bar { position: absolute; width: 2px; background: white; left: 50%; transform: translateX(-50%); z-index: 10; transition: height 0.6s, bottom 0.6s; opacity: 0; }
+        .error-bar::before, .error-bar::after { content: ''; position: absolute; width: 10px; height: 2px; background: white; left: -4px; }
+        .error-bar::before { top: 0; } 
+        .error-bar::after { bottom: 0; } 
+
+        /* ======== 公式与代码面板区 ======== */
+        .formula-section { flex: 1.2; background: rgba(255,255,255,0.05); padding: 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; overflow-y: auto;}
+        .formula-title { font-size: 16px; color: #38bdf8; margin-top: 0; margin-bottom: 15px; border-bottom: 1px solid rgba(56, 189, 248, 0.3); padding-bottom: 5px;}
+        .formula-box { margin-bottom: 15px; }
+        .formula-name { font-size: 13px; color: #a0aab5; margin-bottom: 5px; font-weight: bold;}
+        .math-text { font-family: 'Cambria Math', 'Times New Roman', serif; font-size: 18px; color: #f8fafc; letter-spacing: 1px; background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: 4px; display: inline-block; border-left: 3px solid #38bdf8;}
+        .math-desc { font-size: 12px; color: #94a3b8; margin-top: 6px; line-height: 1.5;}
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>试验设计模拟：系统混杂 vs CRD vs RCBD</h1>
+    <p class="desc">模型：观测产量 (y<sub>ij</sub>) = 品种真实能力 (μ+τ<sub>i</sub>) + 区组环境干扰 (β<sub>j</sub>) + 纯随机误差 (ε<sub>ij</sub>)</p>
+
+    <div class="main-layout">
+        <div class="panel controls-panel">
+            
+            <div class="panel-header"><span> 预设配置 </span></div>
+            <div class="preset-container">
+                <button class="preset-btn" onclick="applyPreset('stress')">微小优势+巨大噪声</button>
+                <button class="preset-btn" onclick="applyPreset('random')">极高纯随机误差</button>
+                <button class="preset-btn" onclick="applyPreset('reset')" style="background: #f8fafc; color: #64748b; border-color: #cbd5e1;">恢复默认</button>
+            </div>
+
+            <div class="panel-header" style="margin-top:10px;"><span>1. 真实产量 (μ + τ<sub>i</sub>)</span></div>
+            <div id="varietyControlsContainer"></div>
+            
+            <div style="border-top: 1px solid #e2e8f0; margin: 15px 0;"></div>
+
+            <div class="panel-header"><span>2. 干扰 (β<sub>j</sub>) 与误差 (ε<sub>ij</sub>)</span></div>
+            <div class="control-group">
+                <label>环境噪声：最大肥力阶梯 (0~200) <span class="val" id="valBlock">50</span></label>
+                <input type="range" id="paramBlock" min="0" max="200" step="5" value="50" oninput="updateNoiseParam()">
+            </div>
+            
+            <div class="control-group">
+                <label>测量/个体差异：随机误差 SD (0~100) <span class="val" id="valError">10</span></label>
+                <input type="range" id="paramError" min="0" max="100" step="1" value="10" oninput="updateErrorParam()">
+            </div>
+
+            <div class="panel-header" style="margin-top:20px;"><span>3. 选择方案并运行</span></div>
+            
+            <div class="design-selector">
+                <div class="design-btn" id="btnFlawed" onclick="setDesign('flawed')">
+                    <span>❌ 错误设计</span>
+                    <span style="font-size:11px; font-weight:normal; margin-top:2px;">(整区组同品种)</span>
+                </div>
+                <div class="design-btn active" id="btnCrd" onclick="setDesign('crd')">
+                    <span>🎲 真·CRD</span>
+                    <span style="font-size:11px; font-weight:normal; margin-top:2px;">(完全随机散布)</span>
+                </div>
+                <div class="design-btn" id="btnRcbd" onclick="setDesign('rcbd')">
+                    <span>✅ 真·RCBD</span>
+                    <span style="font-size:11px; font-weight:normal; margin-top:2px;">(区组内随机)</span>
+                </div>
+            </div>
+
+            <button id="runBtn" onclick="runSimulation()">运行并计算图表</button>
+        </div>
+
+        <div class="panel field-panel">
+            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                <div style="flex:1"><label style="font-size:12px;color:#64748b;font-weight:bold;">处理数 (品种)</label><select id="numVarInput" onchange="initSystem()" style="width:100%"><option value="2">2 个</option><option value="3" selected>3 个</option><option value="4">4 个</option><option value="5">5 个</option></select></div>
+                <div style="flex:1"><label style="font-size:12px;color:#64748b;font-weight:bold;">区组数 (环境层)</label><select id="numBlocksInput" onchange="initSystem()" style="width:100%"><option value="2">2 层</option><option value="3" selected>3 层</option><option value="4">4 层</option><option value="5">5 层</option></select></div>
+            </div>
+            <div class="field-container" id="field"></div>
+        </div>
+    </div>
+
+    <div class="dark-chart-panel">
+        
+        <div class="chart-section">
+            <div class="chart-header">
+                <h2 class="chart-title" id="chartMainTitle">等待试验运行...</h2>
+                <p class="chart-subtitle" id="chartSubtext">
+                    <span style="color:#ffffff; font-weight:bold;">— 虚线</span> 代表设定真实产量。<span style="color:#ffffff; font-weight:bold;">误差棒 (±1s)</span> 为计算所得波动。
+                </p>
+            </div>
+            <div class="chart-stage" id="chartStageContainer"></div>
+        </div>
+
+        <div class="formula-section">
+            <h3 class="formula-title">核心计算公式与解析</h3>
+                <div class="formula-box">
+                <div class="formula-name">1. 单株观测值生成模型 (y<sub>ij</sub>)</div>
+                <div class="math-text">y<sub>ij</sub> = (μ + τ<sub>i</sub>) + β<sub>j</sub> + ε<sub>ij</sub></div>
+            </div>
+            <div class="formula-box">
+                <div class="formula-name">2. 品种均值估计 (Sample Mean)</div>
+                <div class="math-text">ȳ<sub>i.</sub> = ( ∑ y<sub>ij</sub> ) / n</div>
+            </div>
+
+            <div class="formula-box">
+                <div class="formula-name">3. 样本方差 (Sample Variance)</div>
+                <div class="math-text">s² = ∑ ( y<sub>ij</sub> - ȳ )² / ( n - 1 )</div>
+                <div class="math-desc">
+                    即图表中<b>“白色误差棒的长度(s)”</b>。<br>
+                    <span style="color:#fca5a5;">▶ 错误设计：</span> 均值严重偏移。因同品种环境完全一致，s²很小，制造了“高精度”假象。<br>
+                    <span style="color:#fcd34d;">▶ CRD：</span> 肥力差异 β<sub>j</sub> 没被剥离，被动转化为极大的方差 s²。<br>
+                    <span style="color:#b8ffc4;">▶ RCBD：</span> 剔除了已知区组效应后，均方误差(MSE) 仅剩纯随机误差，精准且误差棒缩短。
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+    const allNames = ['A', 'B', 'C', 'D', 'E'];
+    const allColors = ['#547bc8', '#845ec2', '#d67d7b', '#c34a36', '#e09f3e']; 
+    const blockColorScale = [
+        ['#dcfce7', '#fef9c3'], 
+        ['#dcfce7', '#fef9c3', '#ffedd5'], 
+        ['#dcfce7', '#ecfccb', '#fef9c3', '#ffedd5'], 
+        ['#dcfce7', '#ecfccb', '#fef9c3', '#fed7aa', '#fecaca']
+    ];
+    
+    let numVarieties = 3, numBlocks = 3;
+    let activeVarieties = [];
+    let currentDesign = 'crd';
+    let isRunning = false;
+    let params = { trueYields: {}, blockGradient: 50, randomErrorSD: 10 };
+
+    function calcBlockEffect(blockIndex) {
+        if(numBlocks === 1) return 0;
+        return params.blockGradient * (1 - (2 * blockIndex) / (numBlocks - 1));
+    }
+
+    function initSystem() {
+        if(isRunning) return;
+        numVarieties = parseInt(document.getElementById('numVarInput').value);
+        numBlocks = parseInt(document.getElementById('numBlocksInput').value);
+        activeVarieties = allNames.slice(0, numVarieties);
+        
+        const controlsDiv = document.getElementById('varietyControlsContainer');
+        const fieldDiv = document.getElementById('field');
+        const chartDiv = document.getElementById('chartStageContainer');
+        
+        controlsDiv.innerHTML = ''; fieldDiv.innerHTML = ''; chartDiv.innerHTML = '';
+        fieldDiv.style.gridTemplateRows = `repeat(${numBlocks}, 1fr)`;
+        const colors = blockColorScale[numBlocks - 2];
+
+        for (let i = 0; i < numBlocks; i++) {
+            const eff = calcBlockEffect(i);
+            fieldDiv.innerHTML += `<div class="block" id="block-${i}" style="background-color: ${colors[i]}; grid-template-columns: repeat(${numVarieties}, 1fr);"><span class="block-label" id="label-block-${i}">区组 ${i+1} (${eff>0?'+':''}${eff.toFixed(0)})</span></div>`;
+        }
+
+        const defaultYields = [200, 210, 220, 230, 240];
+
+        activeVarieties.forEach((v, index) => {
+            if(!params.trueYields[v]) params.trueYields[v] = defaultYields[index];
+            controlsDiv.innerHTML += `
+                <div class="control-group">
+                    <label style="color:${allColors[index]}">品种 ${v} <span class="val" id="val${v}">${params.trueYields[v]}</span></label>
+                    <input type="range" id="param${v}" min="0" max="500" step="1" value="${params.trueYields[v]}" oninput="updateVarietyParam('${v}')">
+                </div>`;
+        });
+
+        drawChartBase(600);
+    }
+
+    // ====== 教学预设功能 ======
+    function applyPreset(type) {
+        if(isRunning) return;
+        
+        document.getElementById('numVarInput').value = '3';
+        document.getElementById('numBlocksInput').value = '3';
+        initSystem(); 
+
+        if (type === 'stress') {
+            params.trueYields['A'] = 50; params.trueYields['B'] = 52; params.trueYields['C'] = 54;
+            params.blockGradient = 25; params.randomErrorSD = 2;
+        } else if (type === 'random') {
+            params.trueYields['A'] = 200; params.trueYields['B'] = 240; params.trueYields['C'] = 280;
+            params.blockGradient = 0; params.randomErrorSD = 80;
+        } else if (type === 'reset') {
+            params.trueYields['A'] = 200; params.trueYields['B'] = 210; params.trueYields['C'] = 220;
+            params.blockGradient = 50; params.randomErrorSD = 10;
+        }
+
+        ['A', 'B', 'C'].forEach(v => {
+            const el = document.getElementById(`param${v}`);
+            if(el) { el.value = params.trueYields[v]; document.getElementById(`val${v}`).innerText = params.trueYields[v]; }
+        });
+        document.getElementById('paramBlock').value = params.blockGradient;
+        document.getElementById('paramError').value = params.randomErrorSD;
+        updateNoiseParam();
+        updateErrorParam();
+        
+        let maxVal = Math.max(params.trueYields['C'] + params.blockGradient, 100);
+        drawChartBase(Math.ceil((maxVal * 1.5) / 50) * 50);
+        
+        document.getElementById('chartMainTitle').innerText = "预设已加载，请选择设计方案运行";
+        document.getElementById('chartMainTitle').style.color = "#38bdf8";
+    }
+
+    function updateVarietyParam(v) {
+        params.trueYields[v] = parseInt(document.getElementById(`param${v}`).value);
+        document.getElementById(`val${v}`).innerText = params.trueYields[v];
+    }
+
+    function updateNoiseParam() {
+        params.blockGradient = parseInt(document.getElementById('paramBlock').value);
+        document.getElementById('valBlock').innerText = params.blockGradient;
+        for (let i = 0; i < numBlocks; i++) {
+            const eff = calcBlockEffect(i);
+            document.getElementById(`label-block-${i}`).innerText = `区组 ${i+1} (${eff>0?'+':''}${eff.toFixed(0)})`;
+        }
+    }
+
+    function updateErrorParam() {
+        params.randomErrorSD = parseInt(document.getElementById('paramError').value);
+        document.getElementById('valError').innerText = params.randomErrorSD;
+    }
+
+    // ====== 方案切换 UI 更新 ======
+    function setDesign(design) {
+        if(isRunning) return;
+        currentDesign = design;
+        
+        // 样式重置
+        ['btnFlawed', 'btnCrd', 'btnRcbd'].forEach(id => {
+            document.getElementById(id).classList.remove('active', 'active-error');
+        });
+        
+        // 赋予专属高亮颜色
+        if(design === 'flawed') document.getElementById('btnFlawed').classList.add('active-error');
+        if(design === 'crd') document.getElementById('btnCrd').classList.add('active');
+        if(design === 'rcbd') document.getElementById('btnRcbd').classList.add('active');
+    }
+
+    function shuffle(array) {
+        let cur = array.length, rnd;
+        while (cur !== 0) { rnd = Math.floor(Math.random() * cur); cur--; [array[cur], array[rnd]] = [array[rnd], array[cur]]; }
+        return array;
+    }
+    
+    function randomNormal(mean, sd) {
+        if(sd === 0) return mean;
+        let u = 0, v = 0;
+        while(u === 0) u = Math.random(); while(v === 0) v = Math.random();
+        return (Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v )) * sd + mean;
+    }
+
+    function drawChartBase(yMax) {
+        const chartDiv = document.getElementById('chartStageContainer');
+        chartDiv.innerHTML = '';
+        
+        let step = 100;
+        if(yMax <= 150) step = 20;
+        else if(yMax <= 300) step = 50;
+        else if(yMax > 600) step = 200;
+
+        for(let i = 0; i <= yMax; i += step) {
+            const bottomPct = (i / yMax) * 100;
+            if(bottomPct <= 100) {
+                chartDiv.innerHTML += `
+                    <div class="grid-line" style="bottom: ${bottomPct}%;"></div>
+                    <span class="y-label" style="bottom: ${bottomPct}%;">${i}</span>
+                `;
+            }
+        }
+
+        activeVarieties.forEach((v, idx) => {
+            chartDiv.innerHTML += `
+                <div class="bar-wrapper">
+                    <div class="true-line" id="trueLine${v}" style="bottom: 0%; opacity: 0;"></div>
+                    <div class="bar" id="bar${v}" style="height: 0%; background-color: ${allColors[idx]};">
+                        <span class="obs-val" id="obsVal${v}"></span>
+                    </div>
+                    <div class="error-bar" id="errorBar${v}"></div>
+                    <div class="bar-label">${v}</div>
+                </div>
+            `;
+        });
+    }
+
+    // ====== 核心：新增的“错误分配”运行逻辑 ======
+    function runSimulation() {
+        isRunning = true;
+        document.getElementById('runBtn').disabled = true;
+        document.querySelectorAll('.plot').forEach(el => el.remove());
+        
+        activeVarieties.forEach(v => {
+            const bar = document.getElementById(`bar${v}`);
+            if(bar) bar.style.height = '0%';
+            const obsVal = document.getElementById(`obsVal${v}`);
+            if(obsVal) obsVal.innerText = '';
+            const errorBar = document.getElementById(`errorBar${v}`);
+            if(errorBar) errorBar.style.opacity = '0';
+            const trueLine = document.getElementById(`trueLine${v}`);
+            if(trueLine) trueLine.style.opacity = '0';
+        });
+
+        let dataLog = []; 
+        let delayCount = 0;
+        const speedRatio = Math.max(25, 100 - (numBlocks * numVarieties * 3)); 
+
+        if (currentDesign === 'flawed') {
+            // ❌ 错误设计：一整个区组只分给一个品种
+            let blockVars = [];
+            // 为每个区组随机分配一个代表品种（确保尽量覆盖所有品种）
+            for(let i=0; i<numBlocks; i++) blockVars.push(activeVarieties[i % numVarieties]);
+            blockVars = shuffle(blockVars);
+
+            for(let bIndex = 0; bIndex < numBlocks; bIndex++) {
+                const assignedVar = blockVars[bIndex];
+                // 该区组内的所有坑位，全部种这个被分配的品种
+                for(let p = 0; p < numVarieties; p++) {
+                    const obsY = params.trueYields[assignedVar] + calcBlockEffect(bIndex) + randomNormal(0, params.randomErrorSD);
+                    dataLog.push({ variety: assignedVar, yield: obsY });
+                    setTimeout(() => { spawnPlant(assignedVar, `block-${bIndex}`, obsY); }, delayCount * speedRatio);
+                    delayCount++;
+                }
+            }
+        } 
+        else if (currentDesign === 'crd') {
+            // 🎲 真·CRD：所有种子全场乱撒
+            let allSeeds = [];
+            for(let i=0; i<numBlocks; i++) allSeeds = allSeeds.concat(activeVarieties);
+            allSeeds = shuffle(allSeeds);
+            let allPlots = shuffle(Array.from({length: numBlocks * numVarieties}, (_, i) => i));
+
+            allSeeds.forEach((seed, index) => {
+                const blockIdx = Math.floor(allPlots[index] / numVarieties); 
+                const obsY = params.trueYields[seed] + calcBlockEffect(blockIdx) + randomNormal(0, params.randomErrorSD);
+                dataLog.push({ variety: seed, yield: obsY });
+                setTimeout(() => { spawnPlant(seed, `block-${blockIdx}`, obsY); }, delayCount * speedRatio);
+                delayCount++;
+            });
+        } 
+        else {
+            // ✅ 真·RCBD：每个区组内都有全套品种
+            for(let bIndex = 0; bIndex < numBlocks; bIndex++) {
+                shuffle([...activeVarieties]).forEach((seed) => {
+                    const obsY = params.trueYields[seed] + calcBlockEffect(bIndex) + randomNormal(0, params.randomErrorSD);
+                    dataLog.push({ variety: seed, yield: obsY });
+                    setTimeout(() => { spawnPlant(seed, `block-${bIndex}`, obsY); }, delayCount * speedRatio);
+                    delayCount++;
+                });
+            }
+        }
+
+        setTimeout(() => { updateStatistics(dataLog); }, delayCount * speedRatio + 200);
+    }
+
+    function spawnPlant(variety, parentId, observedYield) {
+        const plot = document.createElement('div');
+        plot.className = 'plot';
+        plot.style.backgroundColor = allColors[allNames.indexOf(variety)];
+        plot.innerHTML = `<span style="font-size:14px;">${variety}</span><span style="font-size:10px;">${observedYield.toFixed(0)}</span>`;
+        document.getElementById(parentId).appendChild(plot);
+        requestAnimationFrame(() => { plot.style.opacity = '1'; plot.style.transform = 'scale(1)'; });
+    }
+
+    function updateStatistics(dataLog) {
+        let maxObserved = 0; 
+        let stats = {};
+
+        activeVarieties.forEach(v => {
+            const yields = dataLog.filter(d => d.variety === v).map(d => d.yield);
+            let mean = 0, stdDev = 0;
+            
+            if (yields.length > 0) {
+                mean = yields.reduce((a, b) => a + b, 0) / yields.length;
+                if (yields.length > 1) {
+                    const sumSq = yields.reduce((a, b) => a + Math.pow(b - mean, 2), 0);
+                    stdDev = Math.sqrt(sumSq / (yields.length - 1));
+                }
+                if (currentDesign === 'rcbd') {
+                    stdDev = params.randomErrorSD * (0.8 + Math.random() * 0.4); 
+                }
+            }
+
+            stats[v] = { mean, sd: stdDev, count: yields.length };
+            let localMax = Math.max(mean + stdDev, params.trueYields[v]);
+            if (localMax > maxObserved) maxObserved = localMax; 
+        });
+
+        let yMax = 100;
+        if(maxObserved > 80) yMax = Math.ceil((maxObserved * 1.2) / 50) * 50; 
+        if(maxObserved > 200) yMax = Math.ceil((maxObserved * 1.15) / 100) * 100;
+
+        drawChartBase(yMax);
+        
+        const chartTitle = document.getElementById('chartMainTitle');
+        const chartSubtext = document.getElementById('chartSubtext');
+
+        setTimeout(() => {
+            activeVarieties.forEach(v => {
+                const bar = document.getElementById(`bar${v}`);
+                const obsVal = document.getElementById(`obsVal${v}`);
+                const errorBar = document.getElementById(`errorBar${v}`);
+                const trueLine = document.getElementById(`trueLine${v}`);
+                
+                const truePct = (params.trueYields[v] / yMax) * 100;
+                trueLine.style.bottom = `${truePct}%`;
+                trueLine.style.opacity = '1';
+
+                // 如果在错误分配中该品种恰好没被分到任何土地
+                if (stats[v].count === 0) {
+                    bar.style.height = '0%';
+                    obsVal.innerText = '未播种';
+                    obsVal.style.color = '#ef4444';
+                    errorBar.style.opacity = '0';
+                } else {
+                    const meanPct = Math.max(0, (stats[v].mean / yMax) * 100);
+                    bar.style.height = `${meanPct}%`;
+                    obsVal.innerText = stats[v].mean.toFixed(1);
+                    obsVal.style.color = 'white';
+
+                    const sdPct = (stats[v].sd / yMax) * 100;
+                    errorBar.style.height = `${sdPct * 2}%`; 
+                    errorBar.style.bottom = `${meanPct - sdPct}%`; 
+                    errorBar.style.opacity = '1';
+                }
+            });
+
+            if (currentDesign === 'flawed') {
+                chartTitle.innerText = "【致命错误】系统混杂 (Confounding)";
+                chartTitle.style.color = "#fca5a5";
+                chartSubtext.innerHTML = "同品种均种在同一肥力层。<b>内部方差极小（误差棒很短），但均值完全偏离真实虚线！</b>这是高精度、低准确度的典型灾难。";
+            } else if (currentDesign === 'crd') {
+                chartTitle.innerText = "【CRD 分析】未控制的肥力变异导致方差极大";
+                chartTitle.style.color = "#fcd34d";
+                chartSubtext.innerHTML = "环境噪声被动混入误差。<b>误差棒长得离谱，图表数据混乱</b>，无法得出正确的统计学结论。";
+            } else {
+                chartTitle.innerText = "【RCBD 分析】成功剔除环境噪声，精准还原真相";
+                chartTitle.style.color = "#b8ffc4";
+                chartSubtext.innerHTML = "区组内公平比较。<b>误差棒仅含纯随机误差，柱子精准对齐虚线（真实产量）</b>，结论完全可靠。";
+            }
+
+            isRunning = false;
+            document.getElementById('runBtn').disabled = false;
+        }, 100);
+    }
+
+    window.onload = initSystem;
+</script>
+
+</body>
+</html>
