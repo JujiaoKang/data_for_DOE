@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>4阶拉丁方推导 (Total = 576)</title>
+    <style>
+        body { font-family: 'Cambria Math', 'Microsoft YaHei', sans-serif; background-color: #f4f7f6; color: #333; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 1100px; }
+        h1 { color: #2c3e50; margin-top: 0; text-align: center; }
+        p.desc { text-align: center; color: #666; margin-bottom: 30px; line-height: 1.6; }
+        
+        .main-layout { display: flex; gap: 30px; }
+        .panel { flex: 1; display: flex; flex-direction: column; gap: 15px; }
+        
+        /* 交互控制区 */
+        .controls-panel { border-right: 1px solid #eee; padding-right: 30px; }
+        .step-btn { background: #3498db; color: white; border: none; padding: 12px 20px; border-radius: 6px; font-size: 16px; cursor: pointer; text-align: left; transition: 0.3s; width: 100%; }
+        .step-btn:hover:not(:disabled) { background: #2980b9; transform: translateX(2px); }
+        .step-btn:disabled { background: #bdc3c7; cursor: not-allowed; }
+        .step-btn.active { background: #2c3e50; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2); }
+
+        .sub-steps-container { margin-left: 20px; display: none; flex-direction: column; gap: 10px; border-left: 2px solid #ddd; padding-left: 15px; }
+        .sub-btn { background: #fff; color: #34495e; border: 1px solid #ddd; padding: 10px; border-radius: 4px; cursor: pointer; transition: 0.2s; text-align: left; }
+        .sub-btn:hover:not(:disabled) { background: #f9f9f9; border-color: #3498db; color: #3498db; }
+        .sub-btn.active { background: #eaf6fd; border-color: #3498db; color: #3498db; font-weight: bold; }
+        
+        /* 说明文字区 */
+        .explanation-box { background: #f8f9fa; border: 1px solid #e9ecef; padding: 20px; border-radius: 8px; min-height: 120px; }
+        .explanation-box h3 { margin-top: 0; color: #e67e22; font-size: 18px; }
+        .explanation-box p { margin: 8px 0; line-height: 1.5; color: #555; }
+        .formula-highlight { font-family: 'Courier New', monospace; font-weight: bold; color: #c0392b; background: #fceae9; padding: 2px 6px; border-radius: 4px; }
+
+        /* 动态公式追踪 */
+        .formula-tracker { background: #2c3e50; color: #ecf0f1; padding: 15px; border-radius: 8px; text-align: center; font-size: 20px; margin-bottom: 20px; width: 100%; max-width: 1100px; box-sizing: border-box;}
+        .formula-part { opacity: 0.5; transition: 0.3s; }
+        .formula-part.active { opacity: 1; font-weight: bold; color: #f1c40f; }
+
+        /* 拉丁方网格区 */
+        .field-panel { flex: 1.2; align-items: center; justify-content: center; position: relative; }
+        .grid-container { display: flex; flex-direction: column; gap: 20px; align-items: center; width: 100%; }
+        
+        /* 修复版：支持多解并排显示 */
+        .grids-display-area { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; width: 100%; }
+
+        .latin-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; width: 300px; height: 300px; border: 2px solid #333; padding: 5px; background: #fff; border-radius: 8px; position: relative;}
+        .grid-cell { background: #f0f0f0; border-radius: 4px; display: flex; justify-content: center; align-items: center; font-size: 28px; font-weight: bold; color: #7f8c8d; transition: all 0.4s; position: relative; }
+        
+        /* 单元格状态样式 */
+        .grid-cell.fixed-row { background: #e1f5fe; color: #0277bd; border: 1px solid #b3e5fc; }
+        .grid-cell.fixed-col { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
+        .grid-cell.fixed-both { background: #fff9c4; color: #f57f17; border: 2px solid #fff176; z-index: 2; scale: 1.05; } /* 左上角交叉点 */
+        .grid-cell.active-focus { background: #fce4ec; color: #c2185b; border: 2px solid #f8bbd0; scale: 1.1; z-index: 2;} /* 聚焦的x22 */
+        .grid-cell.filled { background: #fff; color: #333; box-shadow: inset 0 0 5px rgba(0,0,0,0.1); }
+        .grid-cell.highlight-new { animation: popIn 0.5s ease-out; }
+
+        .grid-caption { text-align: center; font-size: 14px; color: #666; margin-top: 5px; font-weight: bold;}
+
+        @keyframes popIn { 0% { scale: 0; opacity: 0; } 80% { scale: 1.1; } 100% { scale: 1; opacity: 1; } }
+
+    </style>
+</head>
+<body>
+
+<div class="formula-tracker">
+    当前计算: 
+    <span class="formula-part" id="partRow1">第一行(4!)</span> × 
+    <span class="formula-part" id="partCol1">第一列(3!)</span> × 
+    <span class="formula-part" id="partR4">标准拉丁方(R₄)</span> = 
+    <span class="formula-part" id="partTotal">总数</span>
+</div>
+
+<div class="container">
+    <h1>4阶拉丁方总数推导 (Total = 576)</h1>
+    <p class="desc">一个 4×4 拉丁方要求每行、每列数字（1-4）不重复。推导核心在于“降维”：先固定首行和首列构建“标准骨架”，算出标准拉丁方数量 $R_4$，再乘以行和列的排列组合数。</p>
+
+    <div class="main-layout">
+        <div class="panel controls-panel">
+            <button class="step-btn" id="btnStep1" onclick="showStep1()">步骤1：排列第一行 (4!)</button>
+            <button class="step-btn" id="btnStep2" onclick="showStep2()" disabled>步骤2：排列第一列 (3!)</button>
+            <button class="step-btn" id="btnStep3" onclick="showStep3()" disabled>步骤3：推导标准拉丁方 (R₄)</button>
+            
+            <div class="sub-steps-container" id="subStepsR4">
+                <p style="font-size: 14px; color: #666; margin: 0 0 5px 5px;">穷举单元格 (2,2) 即 x₂₂ 的可能：</p>
+                <button class="sub-btn" id="btnX22_1" onclick="showX22(1)">当 x₂₂ = 1 时 </button>
+                <button class="sub-btn" id="btnX22_3" onclick="showX22(3)">当 x₂₂ = 3 时</button>
+                <button class="sub-btn" id="btnX22_4" onclick="showX22(4)">当 x₂₂ = 4 时</button>
+            </div>
+
+            <button class="step-btn" id="btnFinal" onclick="showFinal()" disabled style="background: #27ae60; margin-top: auto;">查看最终结论</button>
+        </div>
+
+        <div class="panel field-panel">
+            <div class="explanation-box" id="explanationBox">
+                <h3>交互指引</h3>
+                <p>请点击左侧步骤按钮，一步步还原数学家的推导过程。</p>
+            </div>
+            
+            <div class="grid-container">
+                <div class="grids-display-area" id="gridsDisplayArea">
+                    <div class="grid-wrapper" id="wrapper1">
+                        <div class="latin-grid" id="grid1"></div>
+                        <div class="grid-caption" id="caption1"></div>
+                    </div>
+                    <div class="grid-wrapper" id="wrapper2" style="display:none;">
+                        <div class="latin-grid" id="grid2"></div>
+                        <div class="grid-caption" id="caption2">解二</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 标注拉丁方 (R4) 的四个解
+    const R4_SOLUTIONS = {
+        x22_1: [
+            [[1,2,3,4],[2,1,4,3],[3,4,1,2],[4,3,2,1]], // 解一
+            [[1,2,3,4],[2,1,4,3],[3,4,2,1],[4,3,1,2]]  // 解二 (Bug修复新增)
+        ],
+        x22_3: [[[1,2,3,4],[2,3,4,1],[3,4,1,2],[4,1,2,3]]],
+        x22_4: [[[1,2,3,4],[2,4,1,3],[3,1,4,2],[4,3,2,1]]]
+    };
+
+    const explanationBox = document.getElementById('explanationBox');
+    const subStepsR4 = document.getElementById('subStepsR4');
+    const gridsDisplayArea = document.getElementById('gridsDisplayArea');
+    
+    // 获取动态公式部件
+    const parts = {
+        row1: document.getElementById('partRow1'),
+        col1: document.getElementById('partCol1'),
+        r4: document.getElementById('partR4'),
+        total: document.getElementById('partTotal')
+    };
+
+    // 初始化：绘制空网格
+    createGrid('grid1');
+    createGrid('grid2'); // 预绘制第二网格
+
+    function createGrid(gridId) {
+        const grid = document.getElementById(gridId);
+        grid.innerHTML = '';
+        for (let i = 0; i < 16; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'grid-cell';
+            cell.id = `${gridId}-cell-${i}`;
+            grid.appendChild(cell);
+        }
+    }
+
+    function clearGridClasses(gridId) {
+        for (let i = 0; i < 16; i++) {
+            const cell = document.getElementById(`${gridId}-cell-${i}`);
+            cell.className = 'grid-cell';
+            cell.innerText = '';
+        }
+    }
+
+    // 统一下拉菜单和隐藏逻辑
+    function resetLayoutForR4Exploration() {
+        document.getElementById('wrapper2').style.display = 'none'; // 隐藏第二网格
+        clearGridClasses('grid1');
+        clearGridClasses('grid2');
+        // 恢复网格一的基础骨架 (Steps 1 & 2)
+        fillCell('grid1', 0, 1, 'fixed-both');
+        for(let j=1; j<4; j++) fillCell('grid1', j, j+1, 'fixed-row');
+        for(let i=1; i<4; i++) fillCell('grid1', i*4, i+1, 'fixed-col');
+        
+        // 激活x22聚焦
+        document.getElementById('grid1-cell-5').classList.add('active-focus');
+    }
+
+    // 填充单元格通用函数
+    function fillCell(gridId, index, value, className) {
+        const cell = document.getElementById(`${gridId}-cell-${index}`);
+        cell.innerText = value;
+        cell.classList.add('filled', className, 'highlight-new');
+    }
+
+    // --- 交互步骤 ---
+
+    function showStep1() {
+        resetUI();
+        document.getElementById('btnStep1').classList.add('active');
+        parts.row1.classList.add('active');
+        
+        // 填充第一行
+        fillCell('grid1', 0, 1, 'fixed-both'); // 左上角交叉点预亮
+        for(let j=1; j<4; j++) fillCell('grid1', j, j+1, 'fixed-row');
+
+        explanationBox.innerHTML = `
+            <h3>步骤1：第一行排列 (4!)</h3>
+            <p>第一行需要填入 1、2、3、4，没有任何限制。所以共有全排列 <span class="formula-highlight">4! = 24</span> 种排法。</p>
+            <p>为了降维推导，我们<span style="color:#e67e22; font-weight:bold;">假设</span>选定了其中一种标准顺序：<b>1 2 3 4</b>。</p>
+        `;
+        document.getElementById('btnStep2').disabled = false;
+    }
+
+    function showStep2() {
+        // 保持步骤1状态
+        clearGridClasses('grid1');
+        parts.col1.classList.add('active');
+        document.getElementById('btnStep2').classList.add('active');
+
+        // 重绘第一行
+        fillCell('grid1', 0, 1, 'fixed-both');
+        for(let j=1; j<4; j++) fillCell('grid1', j, j+1, 'fixed-row');
+
+        // 填充第一列 (基于第一步，跳过左上角)
+        for(let i=1; i<4; i++) fillCell('grid1', i*4, i+1, 'fixed-col');
+
+        explanationBox.innerHTML = `
+            <h3>步骤2：基于第一步排列第一列 (3!)</h3>
+            <p>注意交叉点！左上角已经被步骤1的数字 <span style="font-weight:bold; color:#f57f17">1</span> 占用了。</p>
+            <p>第一列还剩下 3 个格子，填入 2、3、4，共有全排列 <span class="formula-highlight">3! = 6</span> 种排法。</p>
+            <p>假设我们选定标准顺序：竖向 <b>2 3 4</b>。现在我们得到了一个<span style="color:#e67e22; font-weight:bold;">标准拉丁方骨架</span>。</p>
+        `;
+        document.getElementById('btnStep3').disabled = false;
+    }
+
+    function showStep3() {
+        parts.r4.classList.add('active');
+        document.getElementById('btnStep3').classList.add('active');
+        subStepsR4.style.display = 'flex'; // 显示穷举按钮
+
+        resetLayoutForR4Exploration();
+
+        explanationBox.innerHTML = `
+            <h3>步骤3：推导标准拉丁方数量 (R₄)</h3>
+            <p>现在我们需要填满右下角 3×3 的九宫格。我们聚焦于交叉点 <span class="formula-highlight">x₂₂</span> (深粉色高亮)。</p>
+            <p>因为第二行和第二列都已有 2，根据拉丁方规则，<span style="color:#c2185b;font-weight:bold;">x₂₂ 只能填 1、3 或 4</span>。</p>
+            <p>请点击左侧<span style="color:#3498db;font-weight:bold;">子按钮</span>，穷举这三种情况。</p>
+        `;
+    }
+
+    function showX22(val) {
+        // 重置子按钮样式
+        document.querySelectorAll('.sub-btn').forEach(btn => btn.classList.remove('active'));
+        
+        if (val === 1) {
+            document.getElementById('btnX22_1').classList.add('active');
+            explanationBox.innerHTML = `
+                <h3>当 x₂₂ = 1 时 </h3>
+                <p>确定了第二行 (2 1 4 3) 和第二列 (竖向 2 1 4 3) 后。</p>
+                <p>为了不冲突，剩余的 $2\\times2$ 格子（右下角）共有 <span class="formula-highlight" style="font-size:1.2em;">2 种</span> 合法填法。如图展示了这两种不同的标准拉丁方解。</p>
+            `;
+            displaySolutions(R4_SOLUTIONS.x22_1);
+        } else if (val === 3) {
+            document.getElementById('btnX22_3').classList.add('active');
+            explanationBox.innerHTML = `
+                <h3>当 x₂₂ = 3 时</h3>
+                <p>第二行缺 1、4，为不冲突只能填 (2 3 4 1)。同理推导列和剩余空格。</p>
+                <p>这种情况下顺藤摸瓜，只有 <span class="formula-highlight">1 种</span> 唯一解。</p>
+            `;
+            displaySolutions(R4_SOLUTIONS.x22_3);
+        } else if (val === 4) {
+            document.getElementById('btnX22_4').classList.add('active');
+            explanationBox.innerHTML = `
+                <h3>当 x₂₂ = 4 时</h3>
+                <p>同理，第二行缺 1、3，必须是 (2 4 1 3)。</p>
+                <p>填充剩余格子，这种情况也只有 <span class="formula-highlight">1 种</span> 唯一解。</p>
+            `;
+            displaySolutions(R4_SOLUTIONS.x22_4);
+        }
+        document.getElementById('btnFinal').disabled = false;
+    }
+
+    // 核心修复：显示多个解的逻辑
+    function displaySolutions(solutions) {
+        // 先隐藏所有网格区域
+        document.getElementById('wrapper1').style.display = 'none';
+        document.getElementById('wrapper2').style.display = 'none';
+        clearGridClasses('grid1');
+        clearGridClasses('grid2');
+
+        // 显示解一
+        document.getElementById('wrapper1').style.display = 'block';
+        if(solutions.length > 1) {
+             document.getElementById('caption1').innerText = "解一";
+        } else {
+             document.getElementById('caption1').innerText = "";
+        }
+        fillFullGrid('grid1', solutions[0]);
+
+        // 如果有多解，显示解二
+        if (solutions.length > 1) {
+            document.getElementById('wrapper2').style.display = 'block';
+            document.getElementById('caption2').innerText = "解二";
+            fillFullGrid('grid2', solutions[1]);
+        }
+    }
+
+    function fillFullGrid(gridId, matrix) {
+        for (let i = 0; i < 4; i++) {
+            for (let j = 0; j < 4; j++) {
+                const index = i * 4 + j;
+                let className = 'filled';
+                if (i === 0 && j === 0) className = 'fixed-both';
+                else if (i === 0) className = 'fixed-row';
+                else if (j === 0) className = 'fixed-col';
+                
+                fillCell(gridId, index, matrix[i][j], className);
+            }
+        }
+    }
+
+    function showFinal() {
+        parts.total.classList.add('active');
+        document.getElementById('btnFinal').classList.add('active');
+        
+        // 调整公式显示
+        document.getElementById('partR4').innerText = "R₄ (2+1+1=4)";
+
+        // 隐藏网格，显示最终高清大图
+        gridsDisplayArea.style.display = 'none';
+        subStepsR4.style.display = 'none';
+
+        explanationBox.innerHTML = `
+            <h3>最终结论</h3>
+            <p>综上所述，4阶标准拉丁方的数量 <span class="formula-highlight">R₄ = 2 + 1 + 1 = 4</span> 种。</p>
+            <p>代入初始降维公式：</p>
+            <p style="text-align:center; font-size: 22px; margin: 15px 0;">
+                $L_4 = 4! \\times 3! \\times R_4$ <br>
+                $L_4 = 24 \\times 6 \\times 4 = $ <span class="formula-highlight" style="font-size: 1.3em;">576</span>
+            </p>
+            <p>通过剥离行和列的排列组合，将复杂问题转化为求解“标准形式”的数量，推导完成。</p>
+        `;
+        // 重新触发MathJax渲染
+        if(window.MathJax) MathJax.typeset();
+    }
+
+    function resetUI() {
+        // 重置按钮和公式样式
+        document.querySelectorAll('.step-btn, .sub-btn').forEach(btn => btn.classList.remove('active'));
+        for(let key in parts) parts[key].classList.remove('active');
+        document.getElementById('partR4').innerText = "标准拉丁方(R₄)";
+        
+        // 重置网格区域
+        gridsDisplayArea.style.display = 'flex';
+        document.getElementById('wrapper1').style.display = 'block';
+        document.getElementById('wrapper2').style.display = 'none';
+        clearGridClasses('grid1');
+        
+        subStepsR4.style.display = 'none';
+        document.getElementById('btnStep2').disabled = true;
+        document.getElementById('btnStep3').disabled = true;
+        document.getElementById('btnFinal').disabled = true;
+    }
+
+</script>
+
+<script>
+    window.MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] } };
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+</body>
+</html>
