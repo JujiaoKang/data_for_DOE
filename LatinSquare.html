@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>交互式拉丁方阵探索器</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg-color: #ffffff;
+            --text-color: #1f2937;
+            --border-color: #e5e7eb;
+            --highlight-strong: #fef08a; /* 强高亮：黄色 */
+            --highlight-weak: #eff6ff;   /* 弱高亮：浅蓝色十字 */
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f9fafb;
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            padding: 40px 20px;
+            margin: 0;
+        }
+
+        .container {
+            background-color: var(--bg-color);
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+            max-width: 800px;
+            width: 100%;
+        }
+
+        h1 {
+            text-align: center;
+            color: var(--text-color);
+            margin-bottom: 30px;
+            font-size: 24px;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        select, button {
+            padding: 10px 16px;
+            font-size: 16px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background-color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            font-weight: 500;
+        }
+
+        button:hover {
+            background-color: #1d4ed8;
+        }
+
+        button.outline {
+            background-color: white;
+            color: var(--primary);
+            border: 1px solid var(--primary);
+        }
+
+        button.outline:hover {
+            background-color: #eff6ff;
+        }
+
+        /* 动态生成的网格容器 */
+        .grid-container {
+            display: grid;
+            gap: 4px;
+            margin: 0 auto 30px auto;
+            justify-content: center;
+            padding: 20px;
+            background-color: #f3f4f6;
+            border-radius: 8px;
+            width: fit-content;
+        }
+
+        .cell {
+            width: 60px;
+            height: 60px;
+            background-color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: 500;
+            border-radius: 4px;
+            cursor: pointer;
+            border: 1px solid #d1d5db;
+            transition: all 0.1s;
+            user-select: none;
+        }
+
+        .cell:hover {
+            border-color: var(--primary);
+            transform: scale(1.05);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            z-index: 10;
+        }
+
+        /* 高亮样式 */
+        .cell.strong-highlight {
+            background-color: var(--highlight-strong);
+            border-color: #eab308;
+            color: #854d0e;
+            font-weight: bold;
+        }
+
+        .cell.weak-highlight {
+            background-color: var(--highlight-weak);
+            border-color: #bfdbfe;
+        }
+
+        .info-panel {
+            background-color: #f8fafc;
+            border-left: 4px solid var(--primary);
+            padding: 16px 20px;
+            border-radius: 4px;
+            margin-bottom: 16px;
+            line-height: 1.6;
+        }
+
+        .info-panel strong {
+            color: var(--primary);
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>拉丁方阵探索与验证器</h1>
+
+    <div class="controls">
+        <label for="orderSelect">选择阶数 (p): </label>
+        <select id="orderSelect">
+            <option value="2">2 阶</option>
+            <option value="3">3 阶</option>
+            <option value="4" selected>4 阶</option>
+            <option value="5">5 阶</option>
+            <option value="6">6 阶</option>
+            <option value="7">7 阶</option>
+        </select>
+        <button class="outline" onclick="generateStandard()">生成标准形</button>
+        <button onclick="generateRandom()">随机抽取 (洗牌)</button>
+    </div>
+
+    <div id="gridContainer" class="grid-container"></div>
+
+    <div class="info-panel" id="statsPanel">
+        </div>
+
+    <div class="info-panel" id="rulePanel">
+        请点击上方网格中的任意字母，以验证拉丁方的“行列唯一性”规则。
+    </div>
+</div>
+
+<script>
+    // 组合数学统计数据表 { 阶数: { total: 总数, std: 标准形数 } }
+    const mathStats = {
+        2: { total: 2, std: 1 },
+        3: { total: 12, std: 1 },
+        4: { total: 576, std: 4 },
+        5: { total: 161280, std: 56 },
+        6: { total: 812851200, std: 9408 },
+        7: { total: 61479419904000, std: 16942080 }
+    };
+
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+    let currentOrder = 4;
+    let currentGrid = [];
+    let selectedCell = null; // { row, col, letter }
+
+    // 初始化
+    window.onload = () => {
+        document.getElementById('orderSelect').addEventListener('change', (e) => {
+            currentOrder = parseInt(e.target.value);
+            generateStandard();
+        });
+        generateStandard();
+    };
+
+    // 生成标准形拉丁方 (第一行第一列按字母表顺序)
+    function generateStandard() {
+        currentGrid = [];
+        for (let i = 0; i < currentOrder; i++) {
+            let row = [];
+            for (let j = 0; j < currentOrder; j++) {
+                // 循环移位逻辑
+                let letterIndex = (i + j) % currentOrder;
+                row.push(alphabet[letterIndex]);
+            }
+            currentGrid.push(row);
+        }
+        selectedCell = null;
+        renderGrid();
+        updatePanels();
+    }
+
+    // 随机抽取拉丁方 (基于标准形进行打乱)
+    function generateRandom() {
+        // 1. 先生成数字矩阵的的基础形
+        let matrix = [];
+        for (let i = 0; i < currentOrder; i++) {
+            let row = [];
+            for (let j = 0; j < currentOrder; j++) {
+                row.push((i + j) % currentOrder);
+            }
+            matrix.push(row);
+        }
+
+        // 2. 打乱行
+        shuffleArray(matrix);
+
+        // 3. 转置 -> 打乱列 -> 转置回来
+        let transposed = transpose(matrix);
+        shuffleArray(transposed);
+        matrix = transpose(transposed);
+
+        // 4. 打乱字母映射
+        let currentLetters = alphabet.slice(0, currentOrder);
+        shuffleArray(currentLetters);
+
+        // 5. 映射到最终网格
+        currentGrid = matrix.map(row => row.map(val => currentLetters[val]));
+        selectedCell = null;
+        renderGrid();
+        updatePanels();
+    }
+
+    // 渲染网格 HTML
+    function renderGrid() {
+        const container = document.getElementById('gridContainer');
+        container.innerHTML = '';
+        container.style.gridTemplateColumns = `repeat(${currentOrder}, 1fr)`;
+
+        for (let r = 0; r < currentOrder; r++) {
+            for (let c = 0; c < currentOrder; c++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                const letter = currentGrid[r][c];
+                cell.textContent = letter;
+                
+                // 处理点击事件
+                cell.onclick = () => {
+                    selectedCell = { row: r, col: c, letter: letter };
+                    renderHighlights();
+                    updateRulePanel();
+                };
+
+                container.appendChild(cell);
+            }
+        }
+        renderHighlights(); // 重新应用高亮
+    }
+
+    // 渲染高亮效果
+    function renderHighlights() {
+        const cells = document.querySelectorAll('.cell');
+        if (!selectedCell) {
+            cells.forEach(c => {
+                c.classList.remove('strong-highlight', 'weak-highlight');
+            });
+            return;
+        }
+
+        cells.forEach((cell, index) => {
+            const r = Math.floor(index / currentOrder);
+            const c = index % currentOrder;
+            const letter = currentGrid[r][c];
+
+            // 移除旧的高亮
+            cell.classList.remove('strong-highlight', 'weak-highlight');
+
+            // 应用新的高亮
+            if (letter === selectedCell.letter) {
+                // 选中的字母及其所有同类字母 -> 强高亮
+                cell.classList.add('strong-highlight');
+            } else if (r === selectedCell.row || c === selectedCell.col) {
+                // 十字交叉线上的其他单元格 -> 弱高亮
+                cell.classList.add('weak-highlight');
+            }
+        });
+    }
+
+    // 更新文本面板
+    function updatePanels() {
+        const stats = mathStats[currentOrder];
+        const statsText = `【组合数学统计】当前为 <strong>${currentOrder} 阶</strong>拉丁方。<br>在数学上，共有 <strong>${stats.std.toLocaleString()}</strong> 种标准形排法；通过行列等价变换，总共存在 <strong>${stats.total.toLocaleString()}</strong> 种合法的排法组合！`;
+        document.getElementById('statsPanel').innerHTML = statsText;
+        
+        document.getElementById('rulePanel').innerHTML = "💡 <strong>提示：</strong>请点击上方网格中的任意字母，以验证拉丁方的“行列唯一性”规则。";
+    }
+
+    function updateRulePanel() {
+        if (selectedCell) {
+            const ruleText = `【规则验证】你选中了字母 <strong>${selectedCell.letter}</strong>。<br>观察上方高亮的十字区域，在第 ${selectedCell.row + 1} 行、第 ${selectedCell.col + 1} 列中，字母 <strong>${selectedCell.letter}</strong> 仅出现了一次。在整个方阵的每一行、每一列都恰好只有一个 <strong>${selectedCell.letter}</strong>，证明该排布完美符合拉丁方规则。`;
+            document.getElementById('rulePanel').innerHTML = ruleText;
+        }
+    }
+
+    // 辅助函数：数组洗牌 (Fisher-Yates 算法)
+    function shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+    }
+
+    // 辅助函数：矩阵转置
+    function transpose(matrix) {
+        return matrix[0].map((_, colIndex) => matrix.map(row => row[colIndex]));
+    }
+</script>
+
+</body>
+</html>
