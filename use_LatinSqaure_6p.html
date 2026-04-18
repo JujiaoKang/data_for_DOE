@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2-10阶正交拉丁方：带随机化功能的伴侣矩阵生成器</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #ffffff; display: flex; justify-content: center; padding: 20px; margin: 0; color: #333; }
+        .container { display: flex; gap: 30px; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); max-width: 1400px;}
+        
+        #matrices-wrapper { display: flex; gap: 40px; }
+        .matrix-section { display: flex; flex-direction: column; align-items: center; }
+        .matrix-title { margin-top: 0; margin-bottom: 10px; color: #555; font-size: 16px; }
+        
+        .grid-container { display: grid; gap: 2px; background-color: #ccc; padding: 4px; border-radius: 6px; }
+        .cell { background-color: white; display: flex; justify-content: center; align-items: center; font-size: 18px; font-weight: bold; color: #444; border-radius: 3px; transition: all 0.1s; }
+        
+        .evaluating { background-color: #fff3cd; border: 2px solid #ffc107; transform: scale(1.1); z-index: 10;}
+        .selected { background-color: #28a745; color: white; box-shadow: inset 0 0 10px rgba(0,0,0,0.2); }
+        .conflict { background-color: #dc3545; color: white; }
+        
+        .panel { display: flex; flex-direction: column; width: 360px; }
+        .setting-box { background: #e9ecef; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+        select { font-size: 16px; padding: 5px; width: 100%; margin-top: 5px;}
+        
+        .diagnostic-screen { background: #1e1e1e; color: #00ff00; font-family: monospace; padding: 10px; border-radius: 6px; height: 140px; overflow-y: auto; margin-bottom: 15px; font-size: 13px; line-height: 1.4; box-shadow: inset 0 0 10px rgba(0,0,0,0.8); }
+        .diag-ok { color: #28a745; }
+        .diag-err { color: #ff4d4d; }
+        .diag-pause { color: #ffc107; font-weight: bold; }
+
+        .stats-box { background: #f8f9fa; padding: 10px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #007bff; font-size: 14px;}
+        .stat-line { display: flex; justify-content: space-between; margin-bottom: 5px; }
+        .stat-value { font-weight: bold; font-family: monospace; color: #007bff; }
+
+        .controls { display: flex; flex-direction: column; gap: 8px; }
+        button { padding: 10px; font-size: 14px; cursor: pointer; border: none; border-radius: 5px; color: white; transition: 0.2s; font-weight: bold;}
+        .btn-start { background-color: #007bff; }
+        .btn-pause { background-color: #fd7e14; }
+        .btn-fast { background-color: #6f42c1; }
+        .btn-stop { background-color: #dc3545; }
+        .btn-shuffle { background-color: #17a2b8; margin-bottom: 5px;} /* 随机按钮专属颜色：蓝绿色 */
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        
+        #math-note { margin-top: 15px; font-size: 13px; color: #555; background: #fff3cd; padding: 10px; border-left: 4px solid #ffc107; border-radius: 4px;}
+
+        #solution-box { display: none; margin-top: 15px; padding: 15px; background: #e8f5e9; border-left: 4px solid #28a745; border-radius: 4px; font-size: 14px; color: #155724; }
+        .solution-matrix-row { font-family: monospace; font-size: 16px; letter-spacing: 5px; margin: 4px 0; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="matrices-wrapper">
+        <div class="matrix-section">
+            <h4 class="matrix-title">基准矩阵 A (不可变)</h4>
+            <div class="grid-container" id="grid-A"></div>
+        </div>
+        <div class="matrix-section">
+            <h4 class="matrix-title">伴侣矩阵 B (生成中)</h4>
+            <div class="grid-container" id="grid-B"></div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="setting-box">
+            <label><strong>选择方阵阶数 (N):</strong></label>
+            <select id="order-select" onchange="initMatrix()">
+                <option value="2">2 阶 (必然无解)</option>
+                <option value="3">3 阶 (秒出解)</option>
+                <option value="4">4 阶 (异或构造, 顺畅解出)</option>
+                <option value="5">5 阶 (顺畅解出)</option>
+                <option value="6" selected>6 阶 (经典死锁 - 必然大面积回溯并失败)</option>
+                <option value="7">7 阶</option>
+                <option value="8">8 阶</option>
+                <option value="9">9 阶</option>
+            </select>
+        </div>
+        
+        <div class="diagnostic-screen" id="diag-screen">等待初始化...</div>
+
+        <div class="stats-box">
+            <div class="stat-line"><span>计算步数:</span> <span class="stat-value" id="val-steps">0</span></div>
+            <div class="stat-line"><span>已填格子数:</span> <span class="stat-value" id="val-max-depth">0</span></div>
+        </div>
+
+        <div class="controls">
+            <button id="btn-shuffle" class="btn-shuffle" onclick="shuffleMatrixA()">🎲 随机打乱基准阵 A</button>
+            
+            <label style="font-size: 13px;">动画速度: <input type="range" id="speed" min="0" max="950" value="800" style="width:100%;"></label>
+            <button id="btn-start" class="btn-start" onclick="startSearch(false)">▶️ 逐格推演 (动画展示)</button>
+            <button id="btn-pause" class="btn-pause" onclick="togglePause()" disabled>⏸ 暂停推演</button>
+            <button id="btn-fast" class="btn-fast" onclick="startSearch(true)">⚡ 极速穷举构建</button>
+            <button id="btn-stop" class="btn-stop" onclick="stopSearch()" disabled>⏹ 强行终止</button>
+        </div>
+
+        <div id="solution-box">
+            <strong>✅ 完美正交拉丁方构建成功！</strong><br>
+            <div id="solution-text" style="margin-top: 10px; padding: 10px; background: white; border-radius: 4px; border: 1px solid #c3e6cb; display: inline-block;"></div>
+        </div>
+        
+        <div id="math-note"></div>
+    </div>
+</div>
+
+<script>
+    let N = 6;
+    let matrixA = [];
+    let matrixB = []; 
+    let isRunning = false;
+    let isPaused = false; 
+    let fastMode = false;
+    
+    let steps = 0, maxDepth = 0, solutions = 0;
+    
+    let rowsB = [];
+    let colsB = [];
+    let usedPairs = new Set();
+
+    // 辅助函数：随机打乱数组
+    function shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
+    }
+
+    function initMatrix() {
+        N = parseInt(document.getElementById('order-select').value);
+        matrixA = []; matrixB = [];
+        // 默认生成规则（保留原样）
+        for (let r = 0; r < N; r++) {
+            let rowA = [], rowB = [];
+            for (let c = 0; c < N; c++) {
+                if (N === 4 || N === 8) rowA.push((r ^ c) + 1);
+                else rowA.push((r + c) % N + 1);
+                rowB.push(''); 
+            }
+            matrixA.push(rowA); matrixB.push(rowB);
+        }
+        updateMathNote();
+        renderGrids();
+    }
+
+    // 新增核心功能：随机打乱基准矩阵 A (同位素变换)
+    function shuffleMatrixA() {
+        if (isRunning) return; // 运行中禁止打乱
+
+        // 生成随机的行排列、列排列、和数字符号重命名排列
+        let rowPermutation = shuffleArray([...Array(N).keys()]);
+        let colPermutation = shuffleArray([...Array(N).keys()]);
+        let valPermutation = shuffleArray([...Array(N).keys()].map(x => x + 1)); // 1到N
+
+        let newMatrixA = [];
+        for (let r = 0; r < N; r++) {
+            let newRow = [];
+            for (let c = 0; c < N; c++) {
+                // 根据打乱后的行、列索引去原矩阵取值
+                let oldVal = matrixA[rowPermutation[r]][colPermutation[c]];
+                // 对取出的值再进行一次符号重命名
+                newRow.push(valPermutation[oldVal - 1]);
+            }
+            newMatrixA.push(newRow);
+        }
+        
+        matrixA = newMatrixA; // 替换原矩阵
+        
+        // 重新渲染左侧网格的数字
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                let cellA = document.getElementById(`cell-A-${r}-${c}`);
+                if (cellA) cellA.innerText = matrixA[r][c];
+            }
+        }
+        
+        resetStats();
+        log('🎲 基准矩阵A已随机打乱重排！', 'diag-ok');
+    }
+
+    function updateMathNote() {
+        const note = document.getElementById('math-note');
+        if (N === 2 || N === 6) note.innerHTML = `<strong>死锁观察：</strong>你可以点击【🎲随机打乱】。你会发现，无论基准矩阵长得多乱，结构性的死锁依然存在，算法必然崩溃。`;
+        else note.innerHTML = `<strong>数学注记：</strong>算法将同时满足：1. B的每行无重复；2. B的每列无重复；3. A与B对应组合绝对不重复。`;
+    }
+
+    function renderGrids() {
+        const gridA = document.getElementById('grid-A');
+        const gridB = document.getElementById('grid-B');
+        gridA.style.gridTemplateColumns = `repeat(${N}, 40px)`;
+        gridA.style.gridTemplateRows = `repeat(${N}, 40px)`;
+        gridB.style.gridTemplateColumns = `repeat(${N}, 40px)`;
+        gridB.style.gridTemplateRows = `repeat(${N}, 40px)`;
+        gridA.innerHTML = ''; gridB.innerHTML = '';
+        
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                let cellA = document.createElement('div');
+                cellA.className = 'cell'; cellA.id = `cell-A-${r}-${c}`; cellA.innerText = matrixA[r][c];
+                gridA.appendChild(cellA);
+
+                let cellB = document.createElement('div');
+                cellB.className = 'cell'; cellB.id = `cell-B-${r}-${c}`; 
+                gridB.appendChild(cellB);
+            }
+        }
+        resetStats();
+        log('系统就绪。请点击开始推演。', 'diag-ok');
+    }
+
+    function resetStats() {
+        steps = 0; maxDepth = 0; solutions = 0;
+        rowsB = Array.from({length: N}, () => new Set());
+        colsB = Array.from({length: N}, () => new Set());
+        usedPairs.clear();
+        
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                matrixB[r][c] = '';
+                let cb = document.getElementById(`cell-B-${r}-${c}`);
+                if(cb) { cb.innerText = ''; cb.className = 'cell'; }
+                let ca = document.getElementById(`cell-A-${r}-${c}`);
+                if(ca) ca.className = 'cell';
+            }
+        }
+        document.getElementById('val-steps').innerText = steps;
+        document.getElementById('val-max-depth').innerText = `0 / ${N*N}`;
+        document.getElementById('solution-box').style.display = 'none';
+    }
+
+    function log(msg, cls='') {
+        if(fastMode) return; 
+        const screen = document.getElementById('diag-screen');
+        screen.innerHTML = `<span class="${cls}">${msg}</span><br>` + screen.innerHTML;
+        if(screen.childNodes.length > 25) screen.removeChild(screen.lastChild);
+    }
+
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    
+    async function checkPause() {
+        while (isPaused && isRunning) {
+            await sleep(100);
+        }
+    }
+
+    async function backtrack(index) {
+        if (!isRunning || solutions > 0) return; 
+        await checkPause();
+
+        if (index > maxDepth) {
+            maxDepth = index;
+            document.getElementById('val-max-depth').innerText = `${maxDepth} / ${N*N}`;
+        }
+
+        if (index === N * N) {
+            solutions++;
+            let solutionHTML = "";
+            for (let r = 0; r < N; r++) {
+                solutionHTML += `<div class="solution-matrix-row">`;
+                for (let c = 0; c < N; c++) {
+                    solutionHTML += matrixB[r][c] + " ";
+                    if (fastMode) {
+                        let cb = document.getElementById(`cell-B-${r}-${c}`);
+                        cb.innerText = matrixB[r][c]; cb.classList.add('selected');
+                    }
+                }
+                solutionHTML += `</div>`;
+            }
+            document.getElementById('solution-text').innerHTML = solutionHTML;
+            document.getElementById('solution-box').style.display = 'block';
+            if(!fastMode) log(`🎉 完美！成功找到正交伴侣矩阵 B！`, 'diag-ok');
+            return;
+        }
+
+        let r = Math.floor(index / N);
+        let c = index % N;
+        let valA = matrixA[r][c];
+
+        for (let valB = 1; valB <= N; valB++) {
+            if (!isRunning || solutions > 0) return;
+            await checkPause(); 
+            steps++;
+            
+            if (steps % 1000 === 0) {
+                document.getElementById('val-steps').innerText = steps;
+                await sleep(0); 
+            }
+
+            let cellA = document.getElementById(`cell-A-${r}-${c}`);
+            let cellB = document.getElementById(`cell-B-${r}-${c}`);
+            
+            if (!fastMode) {
+                cellA.classList.add('evaluating');
+                cellB.classList.add('evaluating');
+                cellB.innerText = valB;
+                await sleep(1000 - document.getElementById('speed').value);
+                await checkPause(); 
+            }
+
+            let pairKey = `${valA}-${valB}`;
+            
+            if (rowsB[r].has(valB) || colsB[c].has(valB) || usedPairs.has(pairKey)) {
+                if (!fastMode) {
+                    cellB.classList.remove('evaluating');
+                    cellB.classList.add('conflict');
+                    await sleep((1000 - document.getElementById('speed').value) / 3);
+                    cellB.classList.remove('conflict');
+                }
+            } else {
+                if (!fastMode) {
+                    cellB.classList.remove('evaluating');
+                    cellB.classList.add('selected');
+                    cellA.classList.remove('evaluating');
+                    log(`✅ 坐标(${r+1},${c+1})填入 ${valB}`, 'diag-ok');
+                } else {
+                    cellB.classList.add('selected');
+                }
+                
+                matrixB[r][c] = valB; rowsB[r].add(valB); colsB[c].add(valB); usedPairs.add(pairKey);
+
+                await backtrack(index + 1); 
+
+                if (!isRunning || solutions > 0) return; 
+                await checkPause(); 
+
+                matrixB[r][c] = ''; rowsB[r].delete(valB); colsB[c].delete(valB); usedPairs.delete(pairKey);
+                
+                if (!fastMode) {
+                    cellB.classList.remove('selected');
+                    cellB.innerText = '';
+                    log(`🔄 撤销：擦除坐标(${r+1},${c+1})的数字${valB}`, 'diag-err');
+                }
+            }
+        }
+        
+        if (!fastMode) {
+            let cellA = document.getElementById(`cell-A-${r}-${c}`);
+            let cellB = document.getElementById(`cell-B-${r}-${c}`);
+            if(cellA) cellA.classList.remove('evaluating');
+            if(cellB) { cellB.classList.remove('evaluating'); cellB.innerText = ''; }
+        }
+    }
+
+    async function startSearch(isFast) {
+        isRunning = true;
+        isPaused = false;
+        fastMode = isFast;
+        document.getElementById('btn-start').disabled = true;
+        document.getElementById('btn-fast').disabled = true;
+        document.getElementById('btn-shuffle').disabled = true; // 运行时禁止打乱
+        document.getElementById('btn-pause').disabled = fastMode; 
+        document.getElementById('btn-pause').innerText = "⏸ 暂停推演";
+        document.getElementById('btn-stop').disabled = false;
+        document.getElementById('order-select').disabled = true;
+        
+        resetStats();
+        if(fastMode) log("⚡ 极速模式启动，正在纯算力狂奔构建矩阵...", "diag-ok");
+        else log("▶️ 逐格推演启动...", "diag-ok");
+
+        let startTime = performance.now();
+        await backtrack(0); 
+        let timeCost = ((performance.now() - startTime) / 1000).toFixed(2);
+
+        document.getElementById('val-steps').innerText = steps; 
+        
+        if (isRunning) { 
+            if (solutions === 0) {
+                log(`❌ 穷举完毕。全盘崩溃退回起点。耗时：${timeCost}秒`, 'diag-err');
+                alert(`构建失败！\n在严格的正交约束下，${N}阶空间发生结构性锁死。\n历经 ${steps} 步试错，伴侣矩阵在此架构下绝对不存在。`);
+            } else {
+                log(`🏆 矩阵构建完成！耗时：${timeCost}秒`, 'diag-ok');
+            }
+        }
+        resetButtons();
+    }
+
+    function togglePause() {
+        isPaused = !isPaused;
+        const btnPause = document.getElementById('btn-pause');
+        if (isPaused) {
+            btnPause.innerText = "▶️ 继续推演";
+            btnPause.style.backgroundColor = "#28a745"; 
+            log("⏸ 算法已挂起暂停，您可以检查当前冲突状态。", "diag-pause");
+        } else {
+            btnPause.innerText = "⏸ 暂停推演";
+            btnPause.style.backgroundColor = "#fd7e14"; 
+            log("▶️ 算法继续运行...", "diag-ok");
+        }
+    }
+
+    function stopSearch() {
+        isRunning = false;
+        isPaused = false;
+        log('⏹ 强制终止计算。', 'diag-err');
+        resetButtons();
+    }
+
+    function resetButtons() {
+        document.getElementById('btn-start').disabled = false;
+        document.getElementById('btn-fast').disabled = false;
+        document.getElementById('btn-shuffle').disabled = false; // 停止后允许打乱
+        document.getElementById('btn-pause').disabled = true;
+        document.getElementById('btn-pause').innerText = "⏸ 暂停推演";
+        document.getElementById('btn-pause').style.backgroundColor = "#fd7e14";
+        document.getElementById('btn-stop').disabled = true;
+        document.getElementById('order-select').disabled = false;
+    }
+
+    initMatrix();
+</script>
+
+</body>
+</html>
